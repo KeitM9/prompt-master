@@ -12,12 +12,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { prompt, mode } = req.body;
     const apiKey = process.env.ANTHROPIC_API_KEY;
 
     if (!apiKey) {
       return res.status(500).json({ error: 'API key not configured' });
     }
+
+    const body = req.body;
+    const messages = body.messages || [{ role: 'user', content: body.prompt || '' }];
+    const system = body.system || undefined;
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -29,10 +32,8 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 1500,
-        messages: [{
-          role: 'user',
-          content: prompt
-        }]
+        ...(system && { system }),
+        messages
       })
     });
 
@@ -42,7 +43,7 @@ export default async function handler(req, res) {
       return res.status(response.status).json({ error: data.error?.message || 'API error' });
     }
 
-    return res.status(200).json({ result: data.content[0].text });
+    return res.status(200).json(data);
 
   } catch (error) {
     return res.status(500).json({ error: error.message });
