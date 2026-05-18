@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { width: 1200px; height: 630px; background: #0a0a0a; font-family: 'Inter', sans-serif; overflow: hidden; }
+
+  .bg-grid {
+    position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(0,255,136,0.04) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(0,255,136,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+  .bg-glow {
+    position: absolute;
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, rgba(0,255,136,0.08) 0%, transparent 70%);
+    top: -150px; left: -100px;
+  }
+  .bg-glow2 {
+    position: absolute;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(0,255,136,0.05) 0%, transparent 70%);
+    bottom: -100px; right: 100px;
+  }
+
+  .container {
+    position: relative; z-index: 10;
+    display: flex; height: 100%;
+    align-items: center;
+    padding: 60px 80px;
+    gap: 80px;
+  }
+
+  .left { flex: 1; }
+
+  .badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(0,255,136,0.1);
+    border: 1px solid rgba(0,255,136,0.3);
+    border-radius: 100px;
+    padding: 6px 16px;
+    margin-bottom: 28px;
+  }
+  .badge-dot { width: 7px; height: 7px; background: #00ff88; border-radius: 50%; }
+  .badge span { color: #00ff88; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+
+  .logo {
+    font-size: 68px; font-weight: 900; line-height: 1;
+    margin-bottom: 20px; letter-spacing: -2px;
+  }
+  .logo .white { color: #ffffff; }
+  .logo .green { color: #00ff88; }
+
+  .tagline {
+    font-size: 20px; color: rgba(255,255,255,0.55);
+    line-height: 1.5; margin-bottom: 40px;
+    max-width: 420px;
+  }
+  .tagline strong { color: rgba(255,255,255,0.85); font-weight: 500; }
+
+  .modes {
+    display: flex; flex-wrap: wrap; gap: 10px;
+    margin-bottom: 44px;
+  }
+  .mode {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    border-radius: 100px;
+    padding: 7px 16px;
+    color: rgba(255,255,255,0.6);
+    font-size: 13px; font-weight: 500;
+  }
+  .mode.active {
+    background: rgba(0,255,136,0.12);
+    border-color: rgba(0,255,136,0.35);
+    color: #00ff88;
+  }
+
+  .bottom { display: flex; align-items: center; gap: 32px; }
+  .price-block {}
+  .price-label { font-size: 12px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .price { font-size: 42px; font-weight: 800; color: #ffffff; letter-spacing: -1px; }
+  .price span { font-size: 22px; color: rgba(255,255,255,0.5); font-weight: 400; }
+
+  .divider { width: 1px; height: 50px; background: rgba(255,255,255,0.1); }
+
+  .partner-block {}
+  .partner-label { font-size: 12px; color: rgba(255,255,255,0.3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+  .partner-value { font-size: 28px; font-weight: 700; color: #00ff88; }
+  .partner-sub { font-size: 12px; color: rgba(255,255,255,0.35); margin-top: 2px; }
+
+  .right {
+    width: 420px; flex-shrink: 0;
+    position: relative;
+  }
+
+  .mockup {
+    background: #111111;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(0,255,136,0.08);
+  }
+  .mockup-bar {
+    background: #0d0d0d;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 14px 20px;
+    display: flex; align-items: center; gap: 12px;
+  }
+  .mockup-dots { display: flex; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; }
+  .dot-r { background: #ff5f57; }
+  .dot-y { background: #febc2e; }
+  .dot-g { background: #28c840; }
+  .mockup-title { font-size: 11px; color: rgba(255,255,255,0.25); margin-left: auto; letter-spacing: 0.05em; }
+
+  .mockup-tabs {
+    display: flex; gap: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+    padding: 0 20px;
+  }
+  .tab {
+    padding: 12px 16px;
+    font-size: 12px; color: rgba(255,255,255,0.3);
+    cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  .tab.active { color: #00ff88; border-bottom-color: #00ff88; }
+
+  .mockup-body { padding: 20px; }
+  .mode-row { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .m-chip {
+    padding: 5px 12px; border-radius: 100px; font-size: 11px;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    color: rgba(255,255,255,0.4);
+  }
+  .m-chip.on {
+    background: rgba(0,255,136,0.1);
+    border-color: rgba(0,255,136,0.3);
+    color: #00ff88;
+  }
+
+  .input-area {
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 10px;
+    padding: 14px;
+    margin-bottom: 14px;
+    min-height: 70px;
+  }
+  .input-text { font-size: 11px; color: rgba(255,255,255,0.25); line-height: 1.6; }
+
+  .btn-create {
+    width: 100%;
+    background: #00ff88;
+    color: #000;
+    font-size: 13px; font-weight: 700;
+    padding: 13px;
+    border-radius: 10px;
+    text-align: center;
+  }
+
+  .result-block {
+    margin-top: 14px;
+    background: rgba(0,255,136,0.04);
+    border: 1px solid rgba(0,255,136,0.15);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .result-line {
+    height: 8px; background: rgba(255,255,255,0.07);
+    border-radius: 4px; margin-bottom: 8px;
+  }
+  .result-line:last-child { width: 60%; margin-bottom: 0; }
+
+  .brand {
+    position: absolute; bottom: 24px; right: 80px;
+    font-size: 11px; color: rgba(255,255,255,0.2);
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .brand strong { color: rgba(255,255,255,0.35); }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="bg-grid"></div>
+  <div class="bg-glow"></div>
+  <div class="bg-glow2"></div>
+
+  <div class="container">
+    <div class="left">
+      <div class="badge">
+        <div class="badge-dot"></div>
+        <span>Тариф Мастер · Architect Systems AI</span>
+      </div>
+
+      <div class="logo">
+        <span class="white">PROMPT</span><span class="green">MASTER</span>
+      </div>
+
+      <p class="tagline">
+        <strong>Система создания промпт-запросов</strong><br>
+        любой сложности на базе Claude AI
+      </p>
+
+      <div class="modes">
+        <div class="mode active">Контент</div>
+        <div class="mode active">Код</div>
+        <div class="mode active">Анализ</div>
+        <div class="mode active">Изображение</div>
+        <div class="mode active">Автоматизация</div>
+        <div class="mode active">Универсальный</div>
+      </div>
+
+      <div class="bottom">
+        <div class="price-block">
+          <div class="price-label">Стоимость</div>
+          <div class="price">4 900 <span>₽</span></div>
+        </div>
+        <div class="divider"></div>
+        <div class="partner-block">
+          <div class="partner-label">Партнёрская программа</div>
+          <div class="partner-value">25% с продажи</div>
+          <div class="partner-sub">Рекомендуй — зарабатывай</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="mockup">
+        <div class="mockup-bar">
+          <div class="mockup-dots">
+            <div class="dot dot-r"></div>
+            <div class="dot dot-y"></div>
+            <div class="dot dot-g"></div>
+          </div>
+          <div class="mockup-title">prompt-master-lac.vercel.app</div>
+        </div>
+        <div class="mockup-tabs">
+          <div class="tab active">Генератор</div>
+          <div class="tab">Улучшить промт</div>
+          <div class="tab">История</div>
+        </div>
+        <div class="mockup-body">
+          <div class="mode-row">
+            <div class="m-chip on">Контент</div>
+            <div class="m-chip">Код</div>
+            <div class="m-chip">Анализ</div>
+            <div class="m-chip">Изображение</div>
+            <div class="m-chip">Авто</div>
+          </div>
+          <div class="input-area">
+            <div class="input-text">Продающий пост Instagram. Аудитория: женщины 25–35, онлайн-курсы, тон вдохновляющий, CTA «Записаться»</div>
+          </div>
+          <div class="btn-create">Создать промт</div>
+          <div class="result-block">
+            <div class="result-line"></div>
+            <div class="result-line"></div>
+            <div class="result-line"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="brand"><strong>ARCHITECT SYSTEMS AI</strong> · PROMPT MASTER</div>
+</body>
+</html>
