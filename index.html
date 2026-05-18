@@ -997,7 +997,7 @@ async function callAPI(messages, sysOverride) {
       })
     });
     const data = await res.json();
-    return data.content?.[0]?.text || null;
+    return data.result || data.content?.[0]?.text || null;
   } catch(e) { return null; }
 }
 
