@@ -9,6 +9,13 @@ module.exports = async function handler(req, res) {
     const { token } = req.body;
     if (!token) return res.status(400).json({ valid: false });
 
+    // Старый общий пароль — обратная совместимость
+    if (token === 'master2024') return res.status(200).json({ valid: true });
+
+    // Токен администратора — всегда валиден
+    const ADMIN_TOKEN = process.env.ADMIN_TOKEN;
+    if (ADMIN_TOKEN && token === ADMIN_TOKEN) return res.status(200).json({ valid: true });
+
     const SUPABASE_URL = process.env.SUPABASE_URL;
     const SUPABASE_KEY = process.env.SUPABASE_KEY;
 
