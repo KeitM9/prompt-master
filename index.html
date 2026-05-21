@@ -629,10 +629,10 @@ body {
   <div class="login-box">
     <div class="login-badge">Тариф Мастер</div>
     <h1 class="login-title">PROMPT<span>MASTER</span></h1>
-    <p class="login-sub">Профессиональный генератор промтов на базе AI. Введи пароль из сообщения после оплаты.</p>
-    <div class="field-label">Пароль доступа</div>
-    <input type="password" id="passwordInput" class="login-input" placeholder="••••••••••" autocomplete="off" />
-    <button class="login-btn" onclick="checkPassword()">Войти</button>
+    <p class="login-sub">Система создания промпт-запросов любой сложности. Введи токен из бота после оплаты.</p>
+    <div class="field-label">Токен доступа</div>
+    <input type="text" id="passwordInput" class="login-input" placeholder="pm_xxxxxxxxxxxx" autocomplete="off" />
+    <button class="login-btn" id="loginBtn" onclick="checkToken()">Войти</button>
     <div class="login-error" id="loginError"></div>
     <div class="login-footer">
       <span class="login-footer-label">Ещё нет доступа?</span>
@@ -724,27 +724,63 @@ body {
 </div>
 
 <script>
-const MASTER_PASSWORD = 'master2024';
-
 let activeMode = '/creative';
 let history = JSON.parse(localStorage.getItem('pm_history') || '[]');
 let clarifyContext = null;
 
 // ── AUTH ──
-function checkPassword() {
+function grantAccess() {
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('appScreen').style.display = 'flex';
+}
+
+async function checkToken() {
   const val = document.getElementById('passwordInput').value.trim();
   const err = document.getElementById('loginError');
   const inp = document.getElementById('passwordInput');
-  if (val === MASTER_PASSWORD) {
-    document.getElementById('loginScreen').style.display = 'none';
-    document.getElementById('appScreen').style.display = 'flex';
-  } else {
-    err.textContent = 'Неверный пароль. Проверь сообщение после оплаты.';
+  const btn = document.getElementById('loginBtn');
+
+  if (!val) {
+    err.textContent = 'Введи токен из бота.';
     inp.classList.add('error');
     setTimeout(() => inp.classList.remove('error'), 400);
+    return;
+  }
+
+  // Старый пароль — для существующих пользователей
+  if (val === 'master2024') {
+    grantAccess();
+    return;
+  }
+
+  // Токен из бота — проверяем через API
+  btn.textContent = 'Проверяем...';
+  btn.disabled = true;
+  err.textContent = '';
+
+  try {
+    const res = await fetch('/api/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: val })
+    });
+    const data = await res.json();
+    if (data.valid) {
+      grantAccess();
+    } else {
+      err.textContent = 'Токен не найден. Получи его у бота после оплаты.';
+      inp.classList.add('error');
+      setTimeout(() => inp.classList.remove('error'), 400);
+    }
+  } catch (e) {
+    err.textContent = 'Ошибка соединения. Попробуй ещё раз.';
+  } finally {
+    btn.textContent = 'Войти';
+    btn.disabled = false;
   }
 }
-document.getElementById('passwordInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkPassword(); });
+
+document.getElementById('passwordInput').addEventListener('keydown', e => { if (e.key === 'Enter') checkToken(); });
 
 // ── TABS ──
 function switchTab(name, btn) {
