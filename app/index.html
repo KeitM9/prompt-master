@@ -865,7 +865,87 @@ END_QUESTIONS
 ---СОВЕТЫ---
 [2-3 совета]`;
 
-// ── GENERATE ──
+// ══ МУЛЬТИАГЕНТНЫЙ ОРКЕСТРАТОР ══
+// Координатор (Haiku) → 5 специалистов параллельно (Haiku) → Финализатор (Sonnet)
+const M_FAST   = 'claude-haiku-4-5-20251001'; // координатор + специалисты
+const M_STRONG = 'claude-sonnet-4-5';          // финализатор
+
+const COORD_SYS = `Ты — Координатор мультиагентной системы генерации промптов. Твоя работа — разобрать задание, НЕ решать его.
+1) Выпиши мысленно, что пользователь уже указал (предмет, аудитория, тон, формат, платформа, цель, объём, ограничения).
+2) Реши строго:
+— Если для точного промта критично не хватает данных — верни ТОЛЬКО уточняющие вопросы (3–5, лишь по реальным пробелам, НЕ переспрашивай уже указанное) в формате:
+QUESTIONS_BLOCK
+1. [вопрос]
+END_QUESTIONS
+— Если данных достаточно — верни ТОЛЬКО краткий бриф по аспектам:
+BRIEF
+Роль: …
+Контекст: …
+Ограничения: …
+Формат: …
+END_BRIEF
+Верни строго ОДИН из двух блоков, без текста вокруг. На русском.`;
+
+const SPECIALISTS = [
+  { name: 'Роль',        sys: 'Ты — специалист «Роль» в сборке промпта. По задаче и брифу определи, кем должна выступить нейросеть (роль, глубина экспертизы, угол зрения). 1–3 предложения, только роль, без вступлений.' },
+  { name: 'Контекст',    sys: 'Ты — специалист «Контекст». Собери контекст ТОЛЬКО из того, что дал пользователь (аудитория, платформа, данные, вводные, цель). Не выдумывай фактов сверх сказанного. Кратко, по пунктам.' },
+  { name: 'Ограничения', sys: 'Ты — специалист «Ограничения». Определи рамки промпта: тон, длина, что включить, что исключить/запретить, язык, антипаттерны (вода, канцелярит). Кратко, по пунктам.' },
+  { name: 'Формат',      sys: 'Ты — специалист «Формат». Определи, как нейросеть должна оформить результат: структура (разделы/список/таблица/JSON), порядок блоков, ориентир по объёму. Кратко.' },
+  { name: 'Валидация',   sys: 'Ты — специалист «Валидация». Составь короткий чек-лист обязательных требований к финальному промпту (что в нём непременно должно быть, чтобы он был полным и исполнимым). 3–6 пунктов.' },
+];
+
+const FINAL_SYS = `Ты — Финализатор мультиагентной системы. Тебе дают исходную задачу и блоки специалистов (Роль, Контекст, Ограничения, Формат, Валидация).
+Собери из них ОДИН цельный, исполнимый промпт для нейросети.
+— Разрешай противоречия по приоритету: явное намерение пользователя → Ограничения → Формат → стиль.
+— Проверь по чек-листу Валидации: полнота, непротиворечивость, исполнимость без доработки.
+— Структура промта: Роль + Контекст + Задача + Ограничения + Формат результата. Одна интерпретация, конкретика, без воды. На русском.
+— Не раскрывай, что работали агенты. Без приветствий и пояснений о процессе.
+Формат ответа строго:
+---ПРОМТ---
+[готовый промт]
+---КОНЕЦ---
+---СОВЕТЫ---
+[2–3 конкретных совета как усилить]`;
+
+function briefText(coordOut) {
+  const m = coordOut.match(/BRIEF([\s\S]*?)END_BRIEF/);
+  return m ? m[1].trim() : coordOut.trim();
+}
+
+// Специалисты работают ОДНОВРЕМЕННО; fail-open: упавший = пустой блок, сборка не падает
+async function runSpecialists(input, mode, brief) {
+  const userMsg = `Режим: ${mode}\nЗадача: ${input}\n\nБриф координатора:\n${brief}`;
+  return Promise.all(SPECIALISTS.map(s =>
+    callAPI([{ role: 'user', content: userMsg }], s.sys, M_FAST, 450)
+      .then(r => ({ name: s.name, text: (r || '').trim() }))
+      .catch(() => ({ name: s.name, text: '' }))
+  ));
+}
+
+async function finalize(input, mode, blocks) {
+  const body = `Режим: ${mode}\nИсходная задача: ${input}\n\nБлоки специалистов:\n` +
+    blocks.map(b => `## ${b.name}\n${b.text || '(нет ответа — учти как разумное допущение)'}`).join('\n\n');
+  return callAPI([{ role: 'user', content: body }], FINAL_SYS, M_STRONG, 1300);
+}
+
+function pipelineBadge(blocks) {
+  const ok = blocks.filter(b => b.text).length;
+  return `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.3px;margin:0 0 8px;">🎯 Координатор → 🧩 ${ok}/5 специалистов → ✅ Финализатор</div>`;
+}
+
+async function runPipeline(input, mode, brief) {
+  const output = document.getElementById('output');
+  output.innerHTML = loader('5 специалистов собирают промпт…');
+  const blocks = await runSpecialists(input, mode, brief);
+  output.innerHTML = loader('Финализатор сводит воедино…');
+  const finalRaw = await finalize(input, mode, blocks);
+  if (!finalRaw) { output.innerHTML = errBlock(); return false; }
+  const { promptText, tipsText } = parsePrompt(finalRaw);
+  output.innerHTML = pipelineBadge(blocks) + buildResultBlock(promptText, tipsText);
+  return { promptText };
+}
+
+// ── GENERATE (через оркестратор) ──
 async function generate() {
   const input = document.getElementById('userInput').value.trim();
   const output = document.getElementById('output');
@@ -874,46 +954,32 @@ async function generate() {
 
   btn.disabled = true;
   clarifyContext = null;
-  output.innerHTML = loader('анализирую запрос...');
+  output.innerHTML = loader('Координатор разбирает задачу…');
 
-  const messages = [{ role: 'user', content: `Режим: ${activeMode}\n\nЗадача: ${input}` }];
-  const result = await callAPI(messages);
-  btn.disabled = false;
+  const coord = await callAPI([{ role: 'user', content: `Режим: ${activeMode}\n\nЗадача: ${input}` }], COORD_SYS, M_FAST, 700);
+  if (!coord) { btn.disabled = false; output.innerHTML = errBlock(); return; }
 
-  if (!result) { output.innerHTML = errBlock(); return; }
-
-  if (result.includes('QUESTIONS_BLOCK')) {
-    const qs = parseQuestions(result);
+  if (coord.includes('QUESTIONS_BLOCK')) {
+    btn.disabled = false;
+    const qs = parseQuestions(coord);
     clarifyContext = { mode: activeMode, original: input, questions: qs };
     output.innerHTML = buildClarifyBlock(qs);
-  } else {
-    const { promptText, tipsText } = parsePrompt(result);
-    output.innerHTML = buildResultBlock(promptText, tipsText);
-    saveHistory(activeMode, input, promptText);
+    return;
   }
+
+  const res = await runPipeline(input, activeMode, briefText(coord));
+  btn.disabled = false;
+  if (res) saveHistory(activeMode, input, res.promptText);
 }
 
-// ── CLARIFY SUBMIT ──
-function submitClarify() {
+// ── CLARIFY SUBMIT (ответы получены → специалисты + финал) ──
+async function submitClarify() {
   const answers = document.getElementById('clarifyAnswer').value.trim();
   if (!answers) return;
-  const output = document.getElementById('output');
-  output.innerHTML = loader('генерирую промт...');
-
   const ctx = clarifyContext;
-  const messages = [
-    { role: 'user', content: `Режим: ${ctx.mode}\n\nЗадача: ${ctx.original}` },
-    { role: 'assistant', content: buildQuestionsText(ctx.questions) },
-    { role: 'user', content: answers }
-  ];
-
-  callAPI(messages).then(result => {
-    if (!result) { output.innerHTML = errBlock(); return; }
-    const { promptText, tipsText } = parsePrompt(result);
-    output.innerHTML = buildResultBlock(promptText, tipsText);
-    saveHistory(ctx.mode, ctx.original, promptText);
-    clarifyContext = null;
-  });
+  const enriched = `${ctx.original}\n\nУточнения от пользователя:\n${answers}`;
+  const res = await runPipeline(enriched, ctx.mode, 'Задача дополнена уточнениями пользователя — учти все детали.');
+  if (res) { saveHistory(ctx.mode, ctx.original, res.promptText); clarifyContext = null; }
 }
 
 // ── IMPROVE ──
@@ -1036,14 +1102,14 @@ function clearHistory() {
 }
 
 // ── API ──
-async function callAPI(messages, sysOverride) {
+async function callAPI(messages, sysOverride, model, maxTokens) {
   try {
     const res = await fetch('/api/claude', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-5',
-        max_tokens: 1000,
+        model: model || 'claude-sonnet-4-5',
+        max_tokens: maxTokens || 1000,
         system: sysOverride || SYSTEM,
         messages
       })
