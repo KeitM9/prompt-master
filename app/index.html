@@ -899,6 +899,7 @@ const FINAL_SYS = `Ты — Финализатор мультиагентной 
 — Разрешай противоречия по приоритету: явное намерение пользователя → Ограничения → Формат → стиль.
 — Проверь по чек-листу Валидации: полнота, непротиворечивость, исполнимость без доработки.
 — Структура промта: Роль + Контекст + Задача + Ограничения + Формат результата. Одна интерпретация, конкретика, без воды. На русском.
+— НЕ ВЫДУМЫВАЙ критичные конкретики (аудитория, числа, метрики, цены, сроки, платформа, факты о продукте, целевое действие), которых нет в задаче пользователя. Если их нет — НЕ подставляй придуманные, оставь как явный пробел [указать: …]. Домысливать можно только безопасное общее (структура, тон по умолчанию, формат).
 — Не раскрывай, что работали агенты. Без приветствий и пояснений о процессе.
 Формат ответа строго:
 ---ПРОМТ---
@@ -924,23 +925,70 @@ async function runSpecialists(input, mode, brief) {
 
 async function finalize(input, mode, blocks) {
   const body = `Режим: ${mode}\nИсходная задача: ${input}\n\nБлоки специалистов:\n` +
-    blocks.map(b => `## ${b.name}\n${b.text || '(нет ответа — учти как разумное допущение)'}`).join('\n\n');
+    blocks.map(b => `## ${b.name}\n${b.text || '(блок пуст — НЕ выдумывай за него критичное)'}`).join('\n\n');
   return callAPI([{ role: 'user', content: body }], FINAL_SYS, M_STRONG, 1300);
+}
+
+// Критичные специалисты — их пустота = FAIL-CLOSED (не финализируем выдумку)
+const CRITICAL_SPECS = ['Роль', 'Контекст'];
+
+// ── АГЕНТ №6: КОНТРОЛЁР (защита от галлюцинаций, fail-closed) ──
+const GUARD_SYS = `Ты — Контролёр, защита промпта от галлюцинаций. Тебе дают исходную задачу пользователя и готовый промпт.
+Твоя работа — не пропустить промпт, который ВЫДУМАЛ критичные детали, которых пользователь не давал и которые нельзя вывести из задачи: аудитория, конкретные числа/метрики/цены/сроки, платформа, факты о продукте, целевое действие.
+Безопасные общие допущения (структура ответа, тон по умолчанию, формат) — это НОРМА, к ним не придирайся.
+Придирайся ТОЛЬКО к выдуманной КРИТИЧНОЙ конкретике, которая меняет смысл результата.
+Верни строго:
+— если промпт опирается только на данное пользователем (критичного не выдумано):
+GROUNDED
+— если промпт выдумал критичные детали:
+FAIL_CLOSED
+QUESTIONS_BLOCK
+1. [спроси ровно те критичные детали, что были выдуманы, чтобы пользователь их указал сам]
+END_QUESTIONS`;
+
+async function guard(input, promptText) {
+  const body = `Исходная задача пользователя:\n${input}\n\nГотовый промпт:\n${promptText}`;
+  return callAPI([{ role: 'user', content: body }], GUARD_SYS, M_FAST, 400);
 }
 
 function pipelineBadge(blocks) {
   const ok = blocks.filter(b => b.text).length;
-  return `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.3px;margin:0 0 8px;">🎯 Координатор → 🧩 ${ok}/5 специалистов → ✅ Финализатор</div>`;
+  return `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.3px;margin:0 0 8px;">🎯 Координатор → 🧩 ${ok}/5 специалистов → ✅ Финализатор → 🛡 Контролёр</div>`;
+}
+
+function failClosedBlock(msg) {
+  return `<div style="background:rgba(255,68,68,.06);border:1px solid rgba(255,68,68,.3);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text);line-height:1.6;">🛡 <b>Стоп — не выдумываю.</b><br>${msg}</div>`;
 }
 
 async function runPipeline(input, mode, brief) {
   const output = document.getElementById('output');
   output.innerHTML = loader('5 специалистов собирают промпт…');
   const blocks = await runSpecialists(input, mode, brief);
+
+  // FAIL-CLOSED: критичный специалист технически не ответил — не финализируем выдумку
+  const failedCritical = blocks.filter(b => CRITICAL_SPECS.includes(b.name) && !b.text);
+  if (failedCritical.length) {
+    output.innerHTML = failClosedBlock('Ключевой агент не ответил (' + failedCritical.map(b => b.name).join(', ') + '). За него не додумываю — нажми «Создать промт» ещё раз.');
+    return false;
+  }
+
   output.innerHTML = loader('Финализатор сводит воедино…');
   const finalRaw = await finalize(input, mode, blocks);
   if (!finalRaw) { output.innerHTML = errBlock(); return false; }
   const { promptText, tipsText } = parsePrompt(finalRaw);
+
+  // КОНТРОЛЁР: если промпт выдумал критичное — fail-closed, спрашиваем, а не показываем галлюцинацию
+  output.innerHTML = loader('Контролёр проверяет на выдумки…');
+  const verdict = await guard(input, promptText);
+  if (verdict && verdict.includes('FAIL_CLOSED')) {
+    const qs = parseQuestions(verdict);
+    if (qs.length) {
+      clarifyContext = { mode, original: input, questions: qs };
+      output.innerHTML = buildClarifyBlock(qs, 'Контролёр остановил выдумку. Уточни, чтобы промпт был на фактах, а не догадках:');
+      return false;
+    }
+  }
+
   output.innerHTML = pipelineBadge(blocks) + buildResultBlock(promptText, tipsText);
   return { promptText };
 }
@@ -1130,10 +1178,10 @@ function buildQuestionsText(qs) {
   return 'QUESTIONS_BLOCK\n' + qs.map((q,i) => `${i+1}. ${q}`).join('\n') + '\nEND_QUESTIONS';
 }
 
-function buildClarifyBlock(qs) {
+function buildClarifyBlock(qs, title) {
   const qHtml = qs.map(q => `<div class="clarify-q">${esc(q)}</div>`).join('');
   return `<div class="clarify-card">
-    <div class="clarify-title">Уточняющие вопросы</div>
+    <div class="clarify-title">${esc(title || 'Уточняющие вопросы')}</div>
     <div class="clarify-questions">${qHtml}</div>
     <textarea class="clarify-answer" id="clarifyAnswer" placeholder="Ответь на вопросы выше — одним сообщением или по пунктам..."></textarea>
     <button class="btn-clarify" onclick="submitClarify()">Готово, создай промт</button>
