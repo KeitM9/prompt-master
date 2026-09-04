@@ -873,7 +873,8 @@ const M_STRONG = 'claude-sonnet-4-5';          // финализатор
 const COORD_SYS = `Ты — Координатор мультиагентной системы генерации промптов. Твоя работа — разобрать задание, НЕ решать его.
 1) Выпиши мысленно, что пользователь уже указал (предмет, аудитория, тон, формат, платформа, цель, объём, ограничения).
 2) Реши строго:
-— Если для точного промта критично не хватает данных — верни ТОЛЬКО уточняющие вопросы (3–5, лишь по реальным пробелам, НЕ переспрашивай уже указанное) в формате:
+ПО УМОЛЧАНИЮ — генерируй (верни BRIEF). Недостающие мелочи разумно доразвивай сам в брифе.
+— Уточняющие вопросы задавай ТОЛЬКО когда непонятен сам предмет задачи или отсутствует то, без чего промт получится бессмысленным. Если предмет ясен и есть базовые вводные — сразу BRIEF, НЕ спрашивай. Максимум 3 вопроса, лишь по реальным пробелам, НИКОГДА не переспрашивай то, что уже есть в задании. Формат вопросов:
 QUESTIONS_BLOCK
 1. [вопрос]
 END_QUESTIONS
@@ -917,7 +918,7 @@ function briefText(coordOut) {
 async function runSpecialists(input, mode, brief) {
   const userMsg = `Режим: ${mode}\nЗадача: ${input}\n\nБриф координатора:\n${brief}`;
   return Promise.all(SPECIALISTS.map(s =>
-    callAPI([{ role: 'user', content: userMsg }], s.sys, M_FAST, 450)
+    callAPI([{ role: 'user', content: userMsg }], s.sys, M_FAST, 350, 25000)
       .then(r => ({ name: s.name, text: (r || '').trim() }))
       .catch(() => ({ name: s.name, text: '' }))
   ));
@@ -926,7 +927,7 @@ async function runSpecialists(input, mode, brief) {
 async function finalize(input, mode, blocks) {
   const body = `Режим: ${mode}\nИсходная задача: ${input}\n\nБлоки специалистов:\n` +
     blocks.map(b => `## ${b.name}\n${b.text || '(блок пуст — НЕ выдумывай за него критичное)'}`).join('\n\n');
-  return callAPI([{ role: 'user', content: body }], FINAL_SYS, M_STRONG, 1300);
+  return callAPI([{ role: 'user', content: body }], FINAL_SYS, M_STRONG, 1400, 50000);
 }
 
 // Критичные специалисты — их пустота = FAIL-CLOSED (не финализируем выдумку)
@@ -937,6 +938,7 @@ const GUARD_SYS = `Ты — Контролёр, защита промпта от
 Твоя работа — не пропустить промпт, который ВЫДУМАЛ критичные детали, которых пользователь не давал и которые нельзя вывести из задачи: аудитория, конкретные числа/метрики/цены/сроки, платформа, факты о продукте, целевое действие.
 Безопасные общие допущения (структура ответа, тон по умолчанию, формат) — это НОРМА, к ним не придирайся.
 Придирайся ТОЛЬКО к выдуманной КРИТИЧНОЙ конкретике, которая меняет смысл результата.
+ВАЖНО: разумную детализацию или переформулировку уже данного пользователем — НИКОГДА не считай выдумкой. FAIL_CLOSED — редкий случай: только когда промпт ввёл ЦЕЛУЮ критичную ось (аудитория / цена / срок / платформа), которую пользователь НЕ упоминал вообще. Если сомневаешься — ставь GROUNDED.
 Верни строго:
 — если промпт опирается только на данное пользователем (критичного не выдумано):
 GROUNDED
@@ -948,7 +950,7 @@ END_QUESTIONS`;
 
 async function guard(input, promptText) {
   const body = `Исходная задача пользователя:\n${input}\n\nГотовый промпт:\n${promptText}`;
-  return callAPI([{ role: 'user', content: body }], GUARD_SYS, M_FAST, 400);
+  return callAPI([{ role: 'user', content: body }], GUARD_SYS, M_FAST, 350, 20000);
 }
 
 function pipelineBadge(blocks) {
@@ -1004,7 +1006,7 @@ async function generate() {
   clarifyContext = null;
   output.innerHTML = loader('Координатор разбирает задачу…');
 
-  const coord = await callAPI([{ role: 'user', content: `Режим: ${activeMode}\n\nЗадача: ${input}` }], COORD_SYS, M_FAST, 700);
+  const coord = await callAPI([{ role: 'user', content: `Режим: ${activeMode}\n\nЗадача: ${input}` }], COORD_SYS, M_FAST, 550, 22000);
   if (!coord) { btn.disabled = false; output.innerHTML = errBlock(); return; }
 
   if (coord.includes('QUESTIONS_BLOCK')) {
@@ -1150,7 +1152,9 @@ function clearHistory() {
 }
 
 // ── API ──
-async function callAPI(messages, sysOverride, model, maxTokens) {
+async function callAPI(messages, sysOverride, model, maxTokens, timeoutMs) {
+  const ctrl = new AbortController();
+  const to = setTimeout(() => ctrl.abort(), timeoutMs || 40000);
   try {
     const res = await fetch('/api/claude', {
       method: 'POST',
@@ -1160,11 +1164,13 @@ async function callAPI(messages, sysOverride, model, maxTokens) {
         max_tokens: maxTokens || 1000,
         system: sysOverride || SYSTEM,
         messages
-      })
+      }),
+      signal: ctrl.signal
     });
     const data = await res.json();
     return data.result || data.content?.[0]?.text || null;
   } catch(e) { return null; }
+  finally { clearTimeout(to); }
 }
 
 // ── HELPERS ──
@@ -1189,12 +1195,19 @@ function buildClarifyBlock(qs, title) {
 }
 
 function parsePrompt(text) {
-  const promptMatch = text.match(/---ПРОМТ---([\s\S]*?)---КОНЕЦ---/);
-  const tipsMatch = text.match(/---СОВЕТЫ---([\s\S]*?)$/);
-  return {
-    promptText: promptMatch ? promptMatch[1].trim() : text.trim(),
-    tipsText: tipsMatch ? tipsMatch[1].trim() : ''
-  };
+  const t = text || '';
+  const tipsMatch = t.match(/---СОВЕТЫ---([\s\S]*?)$/);
+  const tipsText = tipsMatch ? tipsMatch[1].trim() : '';
+  const full = t.match(/---ПРОМТ---([\s\S]*?)---КОНЕЦ---/);
+  let promptText;
+  if (full) {
+    promptText = full[1].trim();
+  } else {
+    // ответ обрезался — берём от ---ПРОМТ--- до советов/конца и чистим любые маркеры
+    const partial = t.match(/---ПРОМТ---([\s\S]*?)(?:---СОВЕТЫ---|$)/);
+    promptText = (partial ? partial[1] : t).replace(/---(ПРОМТ|КОНЕЦ|СОВЕТЫ)---/g, '').trim();
+  }
+  return { promptText, tipsText };
 }
 
 function buildResultBlock(promptText, tipsText) {
