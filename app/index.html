@@ -955,11 +955,11 @@ async function guard(input, promptText) {
 
 function pipelineBadge(blocks) {
   const ok = blocks.filter(b => b.text).length;
-  return `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.3px;margin:0 0 8px;">🎯 Координатор → 🧩 ${ok}/5 специалистов → ✅ Финализатор → 🛡 Контролёр</div>`;
+  return `<div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--muted);letter-spacing:.3px;margin:0 0 8px;">Координатор → ${ok}/5 специалистов → Финализатор → Контролёр</div>`;
 }
 
 function failClosedBlock(msg) {
-  return `<div style="background:rgba(255,68,68,.06);border:1px solid rgba(255,68,68,.3);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text);line-height:1.6;">🛡 <b>Стоп — не выдумываю.</b><br>${msg}</div>`;
+  return `<div style="background:rgba(255,68,68,.06);border:1px solid rgba(255,68,68,.3);border-radius:10px;padding:14px 16px;font-size:13px;color:var(--text);line-height:1.6;"><b>Стоп — не выдумываю.</b><br>${msg}</div>`;
 }
 
 async function runPipeline(input, mode, brief) {
