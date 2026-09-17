@@ -3,11 +3,12 @@
 <head>
 <meta charset="UTF-8">
 <script>
+/* Мягкая дверь: прямой вход в приложение — только по ссылке-токену из бота (после оплаты).
+   Лендинг открывается всегда; вернувшиеся клиенты жмут «Войти». */
 (function(){
   try{
     var t = new URLSearchParams(location.search).get('t');
     if (t) { location.replace('/app?t=' + encodeURIComponent(t)); return; }
-    if (localStorage.getItem('pm_authed') === '1') { location.replace('/app'); }
   }catch(e){}
 })();
 </script>
