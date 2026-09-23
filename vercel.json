@@ -3,6 +3,6 @@
     { "path": "/api/ping", "schedule": "0 6 * * *" }
   ],
   "functions": {
-    "api/audit.js": { "maxDuration": 60 }
+    "api/audit.js": { "maxDuration": 300 }
   }
 }
