@@ -31,7 +31,7 @@ const SYSTEM_PROMPT = `Ты — «Системный Аудитор» AgentProof
 конкретно, барьер структурный (изоляция ключей, лимит шагов, проверка формата на стыке, разделение
 данных и команд), а не совет «будьте внимательнее».
 
-Верни ТОЛЬКО валидный JSON без пояснений, строго в форме:
+Результат отдай ТОЛЬКО вызовом инструмента report. Поля и их смысл:
 {
  "name": "короткое имя системы",
  "score": число 0-10 с одной десятой,
@@ -50,6 +50,30 @@ const SYSTEM_PROMPT = `Ты — «Системный Аудитор» AgentProof
 }
 Подписи короткие: label узла до 14 символов (одно-два слова), label ребра до 10, flags до 20. Узлы: 3-7 штук в порядке потока, первый — вход (io:1), последний — выход (io:1). Рёбра ссылаются
 только на id из nodes. leak:1 — узел с утечкой, weak:1 — слабое ребро.`;
+
+const str = { type: 'string' };
+const REPORT_TOOL = {
+  name: 'report',
+  description: 'Итоговый отчёт аудита системы AI-агентов.',
+  input_schema: {
+    type: 'object',
+    required: ['name', 'score', 'verdict', 'note', 'graph', 'weak', 'battery', 'system', 'hardening', 'steps'],
+    properties: {
+      name: str, score: { type: 'number' }, verdict: str, note: str,
+      graph: { type: 'object', required: ['nodes', 'edges'], properties: {
+        nodes: { type: 'array', items: { type: 'object', required: ['id', 'label'], properties: {
+          id: str, label: str, io: { type: 'integer' }, leak: { type: 'integer' }, flags: { type: 'array', items: str } } } },
+        edges: { type: 'array', items: { type: 'object', required: ['f', 't'], properties: {
+          f: str, t: str, weak: { type: 'integer' }, label: str } } } } },
+      weak: str,
+      battery: { type: 'array', items: { type: 'object', required: ['t', 's', 'n'], properties: { t: str, s: { type: 'integer' }, n: str } } },
+      system: { type: 'array', items: { type: 'object', required: ['t', 'n'], properties: { t: str, n: str } } },
+      exploit: { type: 'object', properties: { path: { type: 'array', items: str }, note: str } },
+      hardening: { type: 'array', items: { type: 'object', required: ['t', 'p', 'do', 'how', 'check'], properties: { t: str, p: str, do: str, how: str, check: str } } },
+      steps: { type: 'array', items: str }
+    }
+  }
+};
 
 // Сайт обещает «секреты и ключи вычищаются до проверки» — держим обещание до вызова Claude.
 const SECRET_RE = [
@@ -123,17 +147,20 @@ module.exports = async function handler(req, res) {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: MODEL, max_tokens: 6000, system: SYSTEM_PROMPT, messages: [{ role: 'user', content: userMsg }] })
+      body: JSON.stringify({ model: MODEL, max_tokens: 8000, system: SYSTEM_PROMPT, tools: [REPORT_TOOL], tool_choice: { type: 'tool', name: 'report' }, messages: [{ role: 'user', content: userMsg }] })
     });
-    if (!r.ok) return res.status(502).json({ error: 'claude ' + r.status });
-    const data = await r.json();
-    const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
-    const m = text.match(/\{[\s\S]*\}/);
-    if (!m) {
-      console.error('audit no json', data.stop_reason, JSON.stringify(data).slice(0, 400));
-      return res.status(502).json({ error: 'no json', stop: data.stop_reason || null });
+    if (!r.ok) {
+      console.error('audit claude', r.status, (await r.text()).slice(0, 400));
+      return res.status(502).json({ error: 'claude ' + r.status });
     }
-    return res.status(200).json(deepEsc(normalize(JSON.parse(m[0]))));
+    const data = await r.json();
+    // tool use: отчёт приходит готовым объектом — сломанный JSON от кавычек в описании невозможен
+    const call = (data.content || []).find(c => c.type === 'tool_use' && c.name === 'report');
+    if (!call) {
+      console.error('audit no report', data.stop_reason, JSON.stringify(data).slice(0, 400));
+      return res.status(502).json({ error: 'no report', stop: data.stop_reason || null });
+    }
+    return res.status(200).json(deepEsc(normalize(call.input)));
   } catch (e) {
     console.error('audit bad report', String(e).slice(0, 200));
     return res.status(502).json({ error: 'bad report' });
