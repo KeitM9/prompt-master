@@ -48,7 +48,7 @@ const SYSTEM_PROMPT = `Ты — «Системный Аудитор» AgentProof
  "hardening": [ {"t":"название исправления","p":"P1|P2|P3|на будущее","do":"что сделать","how":"как — конкретные шаги","check":"как проверить, что закрыто"}, ... 3-6 штук по важности ],
  "steps": [ "то же одной строкой", ... ]
 }
-Узлы: 3-7 штук в порядке потока, первый — вход (io:1), последний — выход (io:1). Рёбра ссылаются
+Подписи короткие: label узла до 14 символов (одно-два слова), label ребра до 10, flags до 20. Узлы: 3-7 штук в порядке потока, первый — вход (io:1), последний — выход (io:1). Рёбра ссылаются
 только на id из nodes. leak:1 — узел с утечкой, weak:1 — слабое ребро.`;
 
 // Сайт обещает «секреты и ключи вычищаются до проверки» — держим обещание до вызова Claude.
@@ -63,6 +63,9 @@ const SECRET_RE = [
   /\bAIza[0-9A-Za-z_\-]{30,}/g                              // Google
 ];
 const redact = s => SECRET_RE.reduce((t, re) => t.replace(re, '[СЕКРЕТ УДАЛЁН]'), s);
+
+// карта рисует узел шириной ~16 символов — длинные подписи режем, чтобы не вылезали
+const cut = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s; };
 
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 // ответ модели рисуется через innerHTML — экранируем каждую строку
@@ -80,9 +83,9 @@ function normalize(r) {
     verdict: r.verdict || '',
     note: r.note || '',
     graph: {
-      nodes: nodes.map(n => ({ id: String(n.id), label: n.label || String(n.id), io: n.io ? 1 : 0, leak: n.leak ? 1 : 0, flags: Array.isArray(n.flags) ? n.flags.slice(0, 3) : [] })),
+      nodes: nodes.map(n => ({ id: String(n.id), label: cut(n.label || n.id, 16), io: n.io ? 1 : 0, leak: n.leak ? 1 : 0, flags: Array.isArray(n.flags) ? n.flags.slice(0, 2).map(f => cut(f, 22)) : [] })),
       edges: (Array.isArray(g.edges) ? g.edges : []).filter(e => e && ids.has(String(e.f)) && ids.has(String(e.t)))
-        .map(e => ({ f: String(e.f), t: String(e.t), weak: e.weak ? 1 : 0, label: e.label || '' }))
+        .map(e => ({ f: String(e.f), t: String(e.t), weak: e.weak ? 1 : 0, label: cut(e.label, 12) }))
     },
     weak: r.weak || '',
     battery: (r.battery || []).slice(0, 6).map(b => ({ t: b.t || '', s: Math.max(0, Math.min(5, Number(b.s) || 0)), n: b.n || '' })),
