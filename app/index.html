@@ -748,12 +748,6 @@ async function checkToken() {
     return;
   }
 
-  // Старый пароль — для существующих пользователей
-  if (val === 'master2024') {
-    grantAccess(val);
-    return;
-  }
-
   // Токен из бота — проверяем через API
   btn.textContent = 'Проверяем...';
   btn.disabled = true;
