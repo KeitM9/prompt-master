@@ -129,9 +129,13 @@ module.exports = async function handler(req, res) {
     const data = await r.json();
     const text = (data.content || []).filter(c => c.type === 'text').map(c => c.text).join('');
     const m = text.match(/\{[\s\S]*\}/);
-    if (!m) return res.status(502).json({ error: 'no json' });
+    if (!m) {
+      console.error('audit no json', data.stop_reason, JSON.stringify(data).slice(0, 400));
+      return res.status(502).json({ error: 'no json', stop: data.stop_reason || null });
+    }
     return res.status(200).json(deepEsc(normalize(JSON.parse(m[0]))));
   } catch (e) {
+    console.error('audit bad report', String(e).slice(0, 200));
     return res.status(502).json({ error: 'bad report' });
   }
 };
