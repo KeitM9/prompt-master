@@ -1,8 +1,5 @@
 {
   "crons": [
     { "path": "/api/ping", "schedule": "0 6 * * *" }
-  ],
-  "functions": {
-    "api/audit.js": { "maxDuration": 300 }
-  }
+  ]
 }
