@@ -22,6 +22,15 @@ module.exports = async function handler(req, res) {
       return res.status(500).json({ valid: false, error: 'DB not configured' });
     }
 
+    // Сначала — функция базы pm_token_ok: отвечает только «да/нет», таблицу users наружу не открывает.
+    // Пока функции нет (миграция не применена) — запасной старый путь ниже.
+    const rpc = await fetch(`${SUPABASE_URL}/rest/v1/rpc/pm_token_ok`, {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${SUPABASE_KEY}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ p_token: String(token) }),
+    });
+    if (rpc.ok) return res.status(200).json({ valid: (await rpc.json()) === true });
+
     const response = await fetch(
       `${SUPABASE_URL}/rest/v1/users?token=eq.${encodeURIComponent(token)}&paid=eq.true`,
       {
